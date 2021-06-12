@@ -1,0 +1,9 @@
+[submodule "incubator-nuttx"]
+	path = incubator-nuttx
+	url = https://github.com/apache/incubator-nuttx
+[submodule "apps"]
+	path = apps
+	url = https://github.com/apache/incubator-nuttx-apps
+[submodule "zephyr"]
+	path = zephyr
+	url = https://github.com/zephyrproject-rtos/zephyr

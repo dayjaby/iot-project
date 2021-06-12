@@ -1,0 +1,18 @@
+SCL = PB6, Pin 58 (left, 7th from bottom)
+SDA = PB7, Pin 59 (left, 6th from bottom)
+
+SCL, SDA can also be used as USART1_TX/RX
+
+SPI1_SCK = PA5
+SPI1_MISO = PA6
+SPI1_MOSI = PA7 
+
+USART1(PA9/10), USART2(PD5/6), USB OTG FS in device mode (PA11/12)
+through DFU (device firmware upgrade), I2C1(PB6/7), I2C2(PB10/3), I2C3(PA8/PB4),
+SPI1(PA4/5/6/7), SPI2(PB12/13/14/15) or SPI3(PA15, PC10/11/12)
+
+Nucleo F446RE:
+D13 SCLK
+D12 MISO
+D11 MOSI
+D10 CSN
