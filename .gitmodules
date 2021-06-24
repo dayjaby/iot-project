@@ -7,3 +7,6 @@
 [submodule "zephyr"]
 	path = zephyr
 	url = https://github.com/zephyrproject-rtos/zephyr
+[submodule "zephyr-app/basic_uart/src/mavlink"]
+	path = zephyr-app/basic_uart/src/mavlink
+	url = git@github.com:mavlink/mavlink
