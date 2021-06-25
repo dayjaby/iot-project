@@ -221,6 +221,33 @@ void mavlink_send_uart_bytes(const uint8_t *ch, int length)
 	uart_irq_tx_enable(uart_dev);
 }
 
+void send_named_value_int(const char* name, int32_t value) {
+	uint8_t send_buf[30];
+	mavlink_message_t mav_msg;
+	mavlink_named_value_int_t msg = {};
+	msg.time_boot_ms = k_uptime_delta(&time_stamp);
+	int len = strlen(name);
+	if (len > 10) len = 10;
+	memcpy(msg.name, name, len);
+	msg.value = value;
+	mavlink_msg_named_value_int_encode(OUR_ID, UWB_COMPONENT_ID, &mav_msg, &msg);
+	int n = mavlink_msg_to_send_buffer(send_buf, &mav_msg);
+	mavlink_send_uart_bytes(send_buf, n);
+}
+
+void send_named_value_float(const char* name, float value) {
+	uint8_t send_buf[30];
+	mavlink_message_t mav_msg;
+	mavlink_named_value_float_t msg = {};
+	msg.time_boot_ms = k_uptime_delta(&time_stamp);
+	int len = strlen(name);
+	if (len > 10) len = 10;
+	memcpy(msg.name, name, len);
+	msg.value = value;
+	mavlink_msg_named_value_float_encode(OUR_ID, UWB_COMPONENT_ID, &mav_msg, &msg);
+	int n = mavlink_msg_to_send_buffer(send_buf, &mav_msg);
+	mavlink_send_uart_bytes(send_buf, n);
+}
 
 void distance_calculator_thread_entry(void) {
 	const uint8_t THEIR_ID = 2;
@@ -258,7 +285,13 @@ void distance_calculator_thread_entry(void) {
 		mavlink_message_t mav_msg;
 		mavlink_distance_sensor_t msg = {};
 		for (int i=1; i<=SYS_IDS; ++i) {
-			if (i==OUR_ID) continue; // do not calculate distance to us
+			if (i==OUR_ID) {
+				send_named_value_float("latitude", coords[OUR_ID].latitude);
+				send_named_value_float("longitude", coords[OUR_ID].longitude);
+				send_named_value_float("altitude", coords[OUR_ID].altitude);
+				continue; // do not calculate distance to us
+			}
+			send_named_value_int("peer", i);
 			msg.time_boot_ms = k_uptime_delta(&time_stamp);
 			msg.id = i;
 			msg.type = MAV_DISTANCE_SENSOR_ULTRASOUND; // TODO: suggest additional types in github.com/mavlink/mavlink
