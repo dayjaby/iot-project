@@ -24,31 +24,40 @@
 #include <zephyr.h>
 #include <arch/cpu.h>
 #include <sys/printk.h>
+#include <cmath>
 
+// Device Tree
 #include <device.h>
 #include <devicetree.h>
+
+// Drivers
 #include <drivers/gpio.h>
 #include <drivers/spi.h>
 #include <drivers/uart.h>
-#include <console/console.h>
-#include <net/net_config.h>
-#include <cmath>
 
+// Network
+#include <net/ieee802154_radio.h>
+#include <net/net_config.h>
+
+// MAVLink
 #define MAVLINK_NO_CONVERSION_HELPERS
 #include "mavlink.h"
 #include "common.h"
 
-#define STACKSIZE 4096
-#define UART_BUF_MAXSIZE 279
-#define M_PI      3.14159265358979323846
 
 const int MAVLINK_MAIN_CHANNEL = 0;
 const int UWB_COMPONENT_ID = 25;
+
+/* ieee802.15.4 device */
+static struct ieee802154_radio_api *radio_api;
+static const struct device *ieee802154_dev;
+uint8_t mac_addr[8];
 
 /*
  * THREADS and FIFOS
  */
 
+#define STACKSIZE 4096
 int64_t time_stamp;
 struct k_thread mavlink_receiver_thread;
 struct k_thread distance_calculator_thread;
@@ -64,9 +73,11 @@ struct coordinates {
 };
 
 K_FIFO_DEFINE(coords_fifo);
-//K_MUTEX_DEFINE(own_coords_mutex);
-//K_MUTEX_DEFINE(their_coords_mutex);
 
+/*
+ * Math helper functions
+ */
+#define M_PI      3.14159265358979323846
 
 inline float rad(float degrees) {
 	return degrees * M_PI / 180.0;
@@ -111,7 +122,10 @@ float calculate_distance(const coordinates& p1, const coordinates& p2) {
 	return r * 2 * atan2(sqrt(a), sqrt(1-a));
 }
 
-// #define MAVLINK_SEND_UART_BYTES mavlink_send_uart_bytes
+/*
+ * UART communication
+ */
+
 
 void handle_gps_raw_int(uint8_t sys_id, mavlink_gps_raw_int_t& gps_raw_int);
 
@@ -139,10 +153,10 @@ mavlink_status_t mavlink_status;
 mavlink_message_t mavlink_msg;
 
 
-/*
- * UART communication
- */
-
+#define UART_BUF_MAXSIZE 279
+static uint8_t uart_tx_buf[UART_BUF_MAXSIZE];
+static uint8_t* uart_tx_ptr = uart_tx_buf;
+static uint16_t uart_tx_ctr = 0;
 static const struct device* uart_dev;
 
 static void uart_isr(const struct device* dev, void* userdata) {
@@ -156,8 +170,16 @@ static void uart_isr(const struct device* dev, void* userdata) {
                                 break;   
                         }
 			if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, c, &mavlink_msg, &mavlink_status)) {
-				// printk("Got full message, handling it\n");
 				handle_message(mavlink_msg);
+			}
+		} else if (uart_irq_tx_ready(dev)) {
+			if (uart_tx_ctr > 0) {
+				int n = uart_fifo_fill(dev, uart_tx_ptr, uart_tx_ctr);
+				uart_tx_ptr += n;
+				uart_tx_ctr -= n;
+			} else {
+				uart_tx_ptr = uart_tx_buf;
+				uart_irq_tx_disable(uart_dev);
 			}
                 } else {
 			break;
@@ -165,18 +187,6 @@ static void uart_isr(const struct device* dev, void* userdata) {
         }
 }
 
-void mavlink_receiver_thread_entry(void)
-{
-	while (1) {
-		uint8_t c; // = console_getchar();
-		if (uart_poll_in(uart_dev, &c) == 0) {
-			if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, c, &mavlink_msg, &mavlink_status)) {
-				handle_message(mavlink_msg);
-				// printk("Received message with ID %d, sequence: %d from component %d of system %d", msg.msgid, msg.seq, msg.compid, msg.sysid);
-			}
-		}
-	}
-}
 static void uart_init(void)
 {
 	uart_dev = device_get_binding("UART_3");
@@ -186,17 +196,23 @@ static void uart_init(void)
 	uart_configure(uart_dev, &cfg);
 
 	uart_irq_rx_disable(uart_dev);
-	//uart_irq_tx_disable(uart_dev);
+	uart_irq_tx_disable(uart_dev);
 	uart_irq_callback_set(uart_dev, uart_isr);
 	uart_irq_rx_enable(uart_dev);
 }
 
 void mavlink_send_uart_bytes(const uint8_t *ch, int length)
 {
-	while(length--) {
+	/*while(length--) {
 		uart_poll_out(uart_dev, *ch++);
+	}*/
+	while(uart_tx_ctr > 0) {
+		k_msleep(5);
 	}
-	// uart_tx(uart_dev, ch, length, SYS_FOREVER_MS);
+	memcpy(uart_tx_buf, ch, length);
+	uart_tx_ptr = uart_tx_buf;
+	uart_tx_ctr = length;
+	uart_irq_tx_enable(uart_dev);
 }
 
 
@@ -261,13 +277,7 @@ void distance_calculator_thread_entry(void) {
 void main(void)
 {
 	time_stamp = k_uptime_get();
-	// console_init();
 	uart_init();
-	/*
-	k_thread_create(&mavlink_receiver_thread, thread_stack, STACKSIZE,
-			(k_thread_entry_t) mavlink_receiver_thread_entry,
-			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
-			*/
 
 	k_thread_create(&distance_calculator_thread, thread_stack, STACKSIZE,
 			(k_thread_entry_t) distance_calculator_thread_entry,
