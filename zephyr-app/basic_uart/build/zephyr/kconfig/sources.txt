@@ -33,8 +33,8 @@
 /home/david/Development/iot-project/zephyr/zephyr/arch/arm/core/aarch32/cortex_m/tz/Kconfig
 /home/david/Development/iot-project/zephyr/zephyr/arch/arm/core/aarch32/mpu/Kconfig
 /home/david/Development/iot-project/zephyr/zephyr/boards/Kconfig
-/home/david/Development/iot-project/zephyr/zephyr/boards/arm/olimex_stm32_e407/Kconfig.board
-/home/david/Development/iot-project/zephyr/zephyr/boards/arm/olimex_stm32_e407/Kconfig.defconfig
+/home/david/Development/iot-project/zephyr/zephyr/boards/arm/nucleo_f446re/Kconfig.board
+/home/david/Development/iot-project/zephyr/zephyr/boards/arm/nucleo_f446re/Kconfig.defconfig
 /home/david/Development/iot-project/zephyr/zephyr/boards/shields/adafruit_2_8_tft_touch_v2/Kconfig.defconfig
 /home/david/Development/iot-project/zephyr/zephyr/boards/shields/adafruit_2_8_tft_touch_v2/Kconfig.shield
 /home/david/Development/iot-project/zephyr/zephyr/boards/shields/adafruit_winc1500/Kconfig.defconfig

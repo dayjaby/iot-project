@@ -29,6 +29,7 @@
 #include <devicetree.h>
 #include <drivers/gpio.h>
 #include <drivers/spi.h>
+#include <drivers/uart.h>
 #include <console/console.h>
 #include <net/net_config.h>
 #include <cmath>
@@ -37,12 +38,22 @@
 #include "mavlink.h"
 #include "common.h"
 
-#define STACKSIZE 1024
+#define STACKSIZE 4096
+#define UART_BUF_MAXSIZE 279
 #define M_PI      3.14159265358979323846
 
-struct k_thread coop_thread;
+const int MAVLINK_MAIN_CHANNEL = 0;
+const int UWB_COMPONENT_ID = 25;
 
-K_THREAD_STACK_DEFINE(coop_stack, STACKSIZE);
+/*
+ * THREADS and FIFOS
+ */
+
+int64_t time_stamp;
+struct k_thread mavlink_receiver_thread;
+struct k_thread distance_calculator_thread;
+
+K_THREAD_STACK_DEFINE(thread_stack, STACKSIZE);
 
 struct coordinates {
 	void* fifo_reserved;
@@ -66,10 +77,23 @@ inline float deg(float radians) {
 }
 
 void euler_to_quaternion(float roll, float pitch, float yaw, float* quaternion) {
-	float& w = *quaternion;
-	float& x = *(quaternion + 1);
-	float& y = *(quaternion + 2);
-	float& z = *(quaternion + 3);
+	float& w = quaternion[0];
+	float& x = quaternion[1];
+	float& y = quaternion[2];
+	float& z = quaternion[3];
+
+	// taken from https://www.euclideanspace.com/maths/geometry/rotations/conversions/eulerToQuaternion/index.htm
+	float c1 = cos(rad(yaw/2));
+	float c2 = cos(rad(pitch/2));
+	float c3 = cos(rad(roll/2));
+	float s1 = sin(rad(yaw/2));
+	float s2 = sin(rad(pitch/2));
+	float s3 = sin(rad(roll/2));
+
+	w = c1 * c2 * c3 - s1 * s2 * s3;
+	x = s1 * s2 * c3 + c1 * c2 * s3;
+	y = s1 * c2 * s3 + c1 * s2 * c3;
+	z = c1 * s2 * s3 - s1 * c2 * c3;
 }
 
 float calculate_heading(const coordinates& p1, const coordinates& p2) {
@@ -86,6 +110,8 @@ float calculate_distance(const coordinates& p1, const coordinates& p2) {
 	a += cos(rad(p1.latitude)) * cos(rad(p2.latitude)) * pow(sin(dlon), 2);
 	return r * 2 * atan2(sqrt(a), sqrt(1-a));
 }
+
+// #define MAVLINK_SEND_UART_BYTES mavlink_send_uart_bytes
 
 void handle_gps_raw_int(uint8_t sys_id, mavlink_gps_raw_int_t& gps_raw_int);
 
@@ -109,54 +135,144 @@ void handle_gps_raw_int(uint8_t sys_id, mavlink_gps_raw_int_t& gps_raw_int) {
 	k_fifo_put(&coords_fifo, mem_ptr);
 }
 
-void coop_thread_entry(void)
+mavlink_status_t mavlink_status;
+mavlink_message_t mavlink_msg;
+
+void mavlink_receiver_thread_entry(void)
 {
-	mavlink_status_t status;
-	mavlink_message_t msg;
-	int chan = 0;
 	while (1) {
 		uint8_t c = console_getchar();
-		if (mavlink_parse_char(chan, c, &msg, &status)) {
-			handle_message(msg);
+		if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, c, &mavlink_msg, &mavlink_status)) {
+			handle_message(mavlink_msg);
 			// printk("Received message with ID %d, sequence: %d from component %d of system %d", msg.msgid, msg.seq, msg.compid, msg.sysid);
+		}
+	}
+}
+
+/*
+ * UART communication
+ */
+
+static const struct device* uart_dev;
+
+static void uart_isr(const struct device* dev, void* userdata) {
+	static uint8_t rx_buf[UART_BUF_MAXSIZE];
+	uint32_t partial_size = UART_BUF_MAXSIZE;
+	uint32_t total_size = 0;
+	uint8_t* dst = rx_buf;
+	while (uart_irq_update(uart_dev) 
+		// && uart_irq_rx_ready(uart_dev)
+		&& uart_irq_is_pending(uart_dev)
+	) {
+		if (!uart_irq_rx_ready(uart_dev)) continue;
+		int len = uart_fifo_read(dev, dst, partial_size);
+		if (len <= 0) continue;
+		dst += len;
+		partial_size -= len;
+		total_size += len;
+	}
+	for(int i=0; i<total_size; ++i) {
+		if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, rx_buf[i], &mavlink_msg, &mavlink_status)) {
+			handle_message(mavlink_msg);
+		}
+	}
+}
+
+static void uart_init(void)
+{
+	uart_dev = device_get_binding("UART_3");
+
+	uart_irq_rx_disable(uart_dev);
+	//uart_irq_tx_disable(uart_dev);
+	uart_irq_callback_set(uart_dev, uart_isr);
+	uart_irq_rx_enable(uart_dev);
+}
+
+void mavlink_send_uart_bytes(const uint8_t *ch, int length)
+{
+	while(length--) {
+		uart_poll_out(uart_dev, *ch++);
+	}
+	// uart_tx(uart_dev, ch, length, SYS_FOREVER_MS);
+}
+
+
+void distance_calculator_thread_entry(void) {
+	const uint8_t SYS_IDS = 2;
+	const uint8_t OUR_ID = 1;
+	const uint8_t THEIR_ID = 2;
+	// Coordinates of the Elbphilharmonie in Hamburg
+	struct coordinates coords[SYS_IDS+1];
+	coords[OUR_ID].sys_id = 0;
+	coords[THEIR_ID].sys_id = 2;
+	coords[THEIR_ID].latitude = 53.541350;
+	coords[THEIR_ID].longitude = 9.985102;
+	coords[THEIR_ID].altitude = 10.0;
+	struct k_timer timer;
+
+	k_timer_init(&timer, NULL, NULL);
+
+	struct coordinates* new_coords;
+	k_timer_start(&timer, K_MSEC(500), K_NO_WAIT);
+	while (1) {
+		k_timer_status_sync(&timer);
+		bool new_data = false;
+		// we publish distances twice a second
+		k_timer_start(&timer, K_MSEC(500), K_NO_WAIT);
+		while((new_coords = reinterpret_cast<struct coordinates*>(k_fifo_get(&coords_fifo, K_NO_WAIT)))) {
+			memcpy(&coords[new_coords->sys_id], new_coords, sizeof(struct coordinates));
+			k_free(new_coords);
+			new_data = true;
+		}
+		if (coords[OUR_ID].sys_id == 0) continue;
+		uint8_t send_buf[51]; // DISTANCE_SENSOR has at most 51 bytes, where as MAVLink 2.0 messages can be as large as 279 bytes
+		mavlink_message_t mav_msg;
+		mavlink_distance_sensor_t msg = {};
+		for (int i=1; i<=SYS_IDS; ++i) {
+			if (i==OUR_ID) continue; // do not calculate distance to us
+			msg.time_boot_ms = k_uptime_delta(&time_stamp);
+			msg.id = i;
+			msg.type = MAV_DISTANCE_SENSOR_ULTRASOUND; // TODO: suggest additional types in github.com/mavlink/mavlink
+			msg.orientation = MAV_SENSOR_ROTATION_CUSTOM;
+			msg.min_distance = 1; // in cm; to be determined
+			msg.max_distance = 10000; // in cm; to be determined
+			msg.current_distance = calculate_distance(coords[OUR_ID], coords[i]); // send for now in m TODO: * 100; // in cm
+			float roll = 0.0f; // TODO: get roll angle from ATTITUDE from flight controller
+			float pitch = 0.0f; // TODO: get pitch angle from ATTITUDE from flight controller
+			float yaw = calculate_heading(coords[OUR_ID], coords[i]); // TODO: compensate yaw angle from ATTITUDE from flight controller
+			float quaternion[4];
+			euler_to_quaternion(roll, pitch, yaw, quaternion); 
+			// need this indirect way, otherwise we get misaligned memory accesses
+			memcpy(msg.quaternion, quaternion, sizeof(quaternion));
+
+			msg.covariance = 0.0f;
+
+			mavlink_msg_distance_sensor_encode(OUR_ID, UWB_COMPONENT_ID, &mav_msg, &msg);
+			int n = mavlink_msg_to_send_buffer(send_buf, &mav_msg);
+			mavlink_send_uart_bytes(send_buf, n);
 		}
 	}
 }
 
 void main(void)
 {
-	const uint8_t SYS_IDS = 2;
-	const uint8_t OUR_ID = 1;
-	const uint8_t THEIR_ID = 2;
-	// Coordinates of the Elbphilharmonie in Hamburg
-	struct coordinates coords[SYS_IDS+1];
-	coords[OUR_ID].sys_id = 1;
-	coords[THEIR_ID].sys_id = 2;
-	coords[THEIR_ID].latitude = 53.541350;
-	coords[THEIR_ID].longitude = 9.985102;
-	coords[THEIR_ID].altitude = 10.0;
-	console_init();
+	time_stamp = k_uptime_get();
+	// console_init();
+	uart_init();
+	/*k_thread_create(&mavlink_receiver_thread, thread_stack, STACKSIZE,
+			(k_thread_entry_t) mavlink_receiver_thread_entry,
+			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
+	*/
 
+	k_thread_create(&distance_calculator_thread, thread_stack, STACKSIZE,
+			(k_thread_entry_t) distance_calculator_thread_entry,
+			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
 	struct k_timer timer;
 
-	k_thread_create(&coop_thread, coop_stack, STACKSIZE,
-			(k_thread_entry_t) coop_thread_entry,
-			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
 	k_timer_init(&timer, NULL, NULL);
-
-	struct coordinates* new_coords;
 	while (1) {
-		while((new_coords = reinterpret_cast<struct coordinates*>(k_fifo_get(&coords_fifo, K_NO_WAIT)))) {
-			memcpy(&coords[new_coords->sys_id], new_coords, sizeof(struct coordinates));
-			k_free(new_coords);
-		}
-		printk("%f meters at %f degrees towards Elbphilharmonie\n", 
-			calculate_distance(coords[OUR_ID], coords[THEIR_ID]),
-			calculate_heading(coords[OUR_ID], coords[THEIR_ID])
-		);
-		// printk("%s: Hello World!\n", __FUNCTION__);
-		k_timer_start(&timer, K_MSEC(500), K_NO_WAIT);
-		// printk("%s: Hello World!\n", __FUNCTION__);
+		// doing nothing here
+		k_timer_start(&timer, K_MSEC(1000), K_NO_WAIT);
 		k_timer_status_sync(&timer);
 	}
 }

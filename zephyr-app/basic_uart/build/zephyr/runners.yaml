@@ -11,7 +11,7 @@ debug-runner: openocd
 
 # Common runner configuration values.
 config:
-  board_dir: /home/david/Development/iot-project/zephyr/zephyr/boards/arm/olimex_stm32_e407
+  board_dir: /home/david/Development/iot-project/zephyr/zephyr/boards/arm/nucleo_f446re
   # Build outputs:
   elf_file: zephyr.elf
   hex_file: zephyr.hex
@@ -30,5 +30,5 @@ args:
     - verify_image
   jlink:
     - --dt-flash=y
-    - --device=STM32F407ZG
+    - --device=STM32F446RE
     - --speed=4000

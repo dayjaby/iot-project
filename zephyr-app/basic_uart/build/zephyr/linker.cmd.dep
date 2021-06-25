@@ -49,6 +49,5 @@ zephyr/linker.cmd: \
  /home/david/Development/iot-project/zephyr/zephyr/include/linker/cplusplus-ram.ld \
  /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/include/generated/snippets-noinit.ld \
  /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/include/generated/snippets-sections.ld \
- /home/david/Development/iot-project/zephyr/zephyr/include/../soc/arm/st_stm32/common/ccm.ld \
  /home/david/Development/iot-project/zephyr/zephyr/include/linker/intlist.ld \
  /home/david/Development/iot-project/zephyr/zephyr/include/linker/debug-sections.ld

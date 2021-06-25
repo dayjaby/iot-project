@@ -2,12 +2,11 @@
 _region_min_align = 32;
 MEMORY
     {
-    FLASH (rx) : ORIGIN = (0x8000000 + 0x0), LENGTH = (1024*1K - 0x0)
+    FLASH (rx) : ORIGIN = (0x8000000 + 0x0), LENGTH = (512*1K - 0x0)
     SRAM (wx) : ORIGIN = 0x20000000, LENGTH = (128 * 1K)
    
    
    
-    CCM(rw) : ORIGIN = 268435456, LENGTH = 65536
    
    
    
@@ -15,6 +14,7 @@ MEMORY
    
    
    
+    BACKUP_SRAM(rw) : ORIGIN = 1073889280, LENGTH = 4096
     IDT_LIST (wx) : ORIGIN = (0x20000000 + (128 * 1K)), LENGTH = 2K
     }
 ENTRY("__start")
@@ -57,7 +57,7 @@ SECTIONS
 . = 0x0;
 . = ALIGN(4);
 . = ALIGN( 1 << LOG2CEIL(4 * 32) );
-. = ALIGN( 1 << LOG2CEIL(4 * (16 + 82)) );
+. = ALIGN( 1 << LOG2CEIL(4 * (16 + 97)) );
 _vector_start = .;
 KEEP(*(.exc_vector_table))
 KEEP(*(".exc_vector_table.*"))
@@ -287,32 +287,6 @@ _ramfunc_rom_start = LOADADDR(.ramfunc);
     __kernel_ram_end = 0x20000000 + (128 * 1K);
     __kernel_ram_size = __kernel_ram_end - __kernel_ram_start;
    
-
- .ccm_bss (NOLOAD) : SUBALIGN(4)
- {
-  __ccm_start = .;
-  __ccm_bss_start = .;
-  *(.ccm_bss)
-  *(".ccm_bss.*")
-  __ccm_bss_end = .;
- } > CCM
- .ccm_noinit (NOLOAD) : SUBALIGN(4)
- {
-  __ccm_noinit_start = .;
-  *(.ccm_noinit)
-  *(".ccm_noinit.*")
-  __ccm_noinit_end = .;
- } > CCM
- .ccm_data : SUBALIGN(4)
- {
-  __ccm_data_start = .;
-  *(.ccm_data)
-  *(".ccm_data.*")
-  __ccm_data_end = .;
- } > CCM AT> FLASH
- __ccm_end = .;
- __ccm_data_rom_start = LOADADDR(.ccm_data);
-
 /DISCARD/ :
 {
  KEEP(*(.irq_info*))

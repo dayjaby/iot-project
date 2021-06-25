@@ -81,8 +81,6 @@
 /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/debug/CMakeFiles/edit_cache.dir
 /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/logging/CMakeFiles/rebuild_cache.dir
 /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/logging/CMakeFiles/edit_cache.dir
-/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/console/CMakeFiles/rebuild_cache.dir
-/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/console/CMakeFiles/edit_cache.dir
 /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/cpp/CMakeFiles/rebuild_cache.dir
 /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/cpp/CMakeFiles/edit_cache.dir
 /home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/fs/CMakeFiles/rebuild_cache.dir

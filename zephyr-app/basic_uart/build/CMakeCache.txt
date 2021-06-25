@@ -21,16 +21,16 @@ APPLICATION_BINARY_DIR:PATH=/home/david/Development/iot-project/zephyr-app/basic
 APPLICATION_SOURCE_DIR:PATH=/home/david/Development/iot-project/zephyr-app/basic_uart
 
 //Selected board
-BOARD:STRING=olimex_stm32_e407
+BOARD:STRING=nucleo_f446re
 
 //Path to a file.
-BOARD_DIR:PATH=/home/david/Development/iot-project/zephyr/zephyr/boards/arm/olimex_stm32_e407
+BOARD_DIR:PATH=/home/david/Development/iot-project/zephyr/zephyr/boards/arm/nucleo_f446re
 
 //Path to a program.
 BOSSAC:FILEPATH=/home/david/zephyr-sdk-0.12.4/sysroots/x86_64-pokysdk-linux/usr/bin/bossac
 
 //Selected board
-CACHED_BOARD:STRING=olimex_stm32_e407
+CACHED_BOARD:STRING=nucleo_f446re
 
 //If desired, you can build the application usingthe configuration
 // settings specified in an alternate .conf file using this parameter.
@@ -483,7 +483,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_NM
 CMAKE_NM-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=106
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=105
 //ADVANCED property for variable: CMAKE_OBJCOPY
 CMAKE_OBJCOPY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_OBJDUMP

@@ -36,7 +36,6 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/debug/cmake_install.cmake")
   include("/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/logging/cmake_install.cmake")
-  include("/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/console/cmake_install.cmake")
   include("/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/cpp/cmake_install.cmake")
   include("/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/fs/cmake_install.cmake")
   include("/home/david/Development/iot-project/zephyr-app/basic_uart/build/zephyr/subsys/ipc/cmake_install.cmake")

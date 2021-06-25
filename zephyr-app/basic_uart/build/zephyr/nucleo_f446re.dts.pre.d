@@ -1,10 +1,9 @@
 empty_file.o: \
  /home/david/Development/iot-project/zephyr/zephyr/misc/empty_file.c \
- /home/david/Development/iot-project/zephyr/zephyr/boards/arm/olimex_stm32_e407/olimex_stm32_e407.dts \
- /home/david/Development/iot-project/zephyr/zephyr/dts/arm/st/f4/stm32f407Xg.dtsi \
+ /home/david/Development/iot-project/zephyr/zephyr/boards/arm/nucleo_f446re/nucleo_f446re.dts \
+ /home/david/Development/iot-project/zephyr/zephyr/dts/arm/st/f4/stm32f446Xe.dtsi \
  /home/david/Development/iot-project/zephyr/zephyr/dts/common/mem.h \
- /home/david/Development/iot-project/zephyr/zephyr/dts/arm/st/f4/stm32f407.dtsi \
- /home/david/Development/iot-project/zephyr/zephyr/dts/arm/st/f4/stm32f405.dtsi \
+ /home/david/Development/iot-project/zephyr/zephyr/dts/arm/st/f4/stm32f446.dtsi \
  /home/david/Development/iot-project/zephyr/zephyr/dts/arm/st/f4/stm32f401.dtsi \
  /home/david/Development/iot-project/zephyr/zephyr/dts/arm/st/f4/stm32f4.dtsi \
  /home/david/Development/iot-project/zephyr/zephyr/dts/arm/armv7-m.dtsi \
@@ -14,6 +13,7 @@ empty_file.o: \
  /home/david/Development/iot-project/zephyr/zephyr/include/dt-bindings/gpio/gpio.h \
  /home/david/Development/iot-project/zephyr/zephyr/include/dt-bindings/pwm/pwm.h \
  /home/david/Development/iot-project/zephyr/zephyr/dts/common/freq.h \
- /home/david/Development/iot-project/zephyr/modules/hal/stm32/dts/st/f4/stm32f407z(e-g)tx-pinctrl.dtsi \
+ /home/david/Development/iot-project/zephyr/modules/hal/stm32/dts/st/f4/stm32f446r(c-e)tx-pinctrl.dtsi \
  /home/david/Development/iot-project/zephyr/zephyr/include/dt-bindings/pinctrl/stm32-pinctrl.h \
- /home/david/Development/iot-project/zephyr/zephyr/include/dt-bindings/pinctrl/stm32-pinctrl-common.h
+ /home/david/Development/iot-project/zephyr/zephyr/include/dt-bindings/pinctrl/stm32-pinctrl-common.h \
+ /home/david/Development/iot-project/zephyr/zephyr/boards/arm/nucleo_f446re/arduino_r3_connector.dtsi
