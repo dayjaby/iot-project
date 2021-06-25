@@ -126,6 +126,8 @@ float calculate_distance(const coordinates& p1, const coordinates& p2) {
  * UART communication
  */
 
+const uint8_t SYS_IDS = 2;
+static uint8_t OUR_ID = 0;
 
 void handle_gps_raw_int(uint8_t sys_id, mavlink_gps_raw_int_t& gps_raw_int);
 
@@ -142,6 +144,10 @@ void handle_gps_raw_int(uint8_t sys_id, mavlink_gps_raw_int_t& gps_raw_int) {
 	size_t size = sizeof(struct coordinates);
         void* mem_ptr = k_malloc(size);
 	struct coordinates* coords = reinterpret_cast<struct coordinates*>(mem_ptr);
+	if (OUR_ID == 0 && sys_id <= SYS_IDS) {
+		// now we know who we are
+		OUR_ID = sys_id;
+	}
 	coords->sys_id = sys_id;
 	coords->latitude = gps_raw_int.lat / 1e7;
 	coords->longitude = gps_raw_int.lon / 1e7;
@@ -203,10 +209,10 @@ static void uart_init(void)
 
 void mavlink_send_uart_bytes(const uint8_t *ch, int length)
 {
-	/*while(length--) {
-		uart_poll_out(uart_dev, *ch++);
-	}*/
 	while(uart_tx_ctr > 0) {
+		// another message being processed
+		// let's wait for 5 milliseconds as sending a DISTANCE_SENSOR message at 115200 baudrate
+		// should take around 4.43 milliseconds
 		k_msleep(5);
 	}
 	memcpy(uart_tx_buf, ch, length);
@@ -217,12 +223,9 @@ void mavlink_send_uart_bytes(const uint8_t *ch, int length)
 
 
 void distance_calculator_thread_entry(void) {
-	const uint8_t SYS_IDS = 2;
-	const uint8_t OUR_ID = 1;
 	const uint8_t THEIR_ID = 2;
 	// Coordinates of the Elbphilharmonie in Hamburg
 	struct coordinates coords[SYS_IDS+1];
-	coords[OUR_ID].sys_id = 0;
 	coords[THEIR_ID].sys_id = 2;
 	coords[THEIR_ID].latitude = 53.541350;
 	coords[THEIR_ID].longitude = 9.985102;
@@ -239,12 +242,18 @@ void distance_calculator_thread_entry(void) {
 		// we publish distances twice a second
 		k_timer_start(&timer, K_MSEC(500), K_NO_WAIT);
 		while((new_coords = reinterpret_cast<struct coordinates*>(k_fifo_get(&coords_fifo, K_NO_WAIT)))) {
-			memcpy(&coords[new_coords->sys_id], new_coords, sizeof(struct coordinates));
+			if(new_coords->sys_id <= SYS_IDS) {
+				memcpy(&coords[new_coords->sys_id], new_coords, sizeof(struct coordinates));
+				new_data = true;
+			}
 			k_free(new_coords);
-			new_data = true;
 		}
-		if (!new_data) continue;
-		// if (coords[OUR_ID].sys_id == 0) continue;
+		if (
+			!new_data // no new data, so nothing to calculate
+			|| (OUR_ID == 0) // we do not know our identity yet, waiting to receive GPS_RAW_INT with a SYS_ID != 0
+		) {
+			continue;
+		}
 		uint8_t send_buf[51]; // DISTANCE_SENSOR has at most 51 bytes, where as MAVLink 2.0 messages can be as large as 279 bytes
 		mavlink_message_t mav_msg;
 		mavlink_distance_sensor_t msg = {};
