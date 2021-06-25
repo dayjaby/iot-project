@@ -1,2 +1,3 @@
 /build
 generated/include/mavlink
+/zephyr-app/basic_uart/build

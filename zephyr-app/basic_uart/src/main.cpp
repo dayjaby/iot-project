@@ -138,16 +138,6 @@ void handle_gps_raw_int(uint8_t sys_id, mavlink_gps_raw_int_t& gps_raw_int) {
 mavlink_status_t mavlink_status;
 mavlink_message_t mavlink_msg;
 
-void mavlink_receiver_thread_entry(void)
-{
-	while (1) {
-		uint8_t c = console_getchar();
-		if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, c, &mavlink_msg, &mavlink_status)) {
-			handle_message(mavlink_msg);
-			// printk("Received message with ID %d, sequence: %d from component %d of system %d", msg.msgid, msg.seq, msg.compid, msg.sysid);
-		}
-	}
-}
 
 /*
  * UART communication
@@ -156,31 +146,44 @@ void mavlink_receiver_thread_entry(void)
 static const struct device* uart_dev;
 
 static void uart_isr(const struct device* dev, void* userdata) {
-	static uint8_t rx_buf[UART_BUF_MAXSIZE];
-	uint32_t partial_size = UART_BUF_MAXSIZE;
-	uint32_t total_size = 0;
-	uint8_t* dst = rx_buf;
-	while (uart_irq_update(uart_dev) 
-		// && uart_irq_rx_ready(uart_dev)
-		&& uart_irq_is_pending(uart_dev)
+	uint8_t c;
+	
+	while (uart_irq_update(dev)
+		&& uart_irq_is_pending(dev)
 	) {
-		if (!uart_irq_rx_ready(uart_dev)) continue;
-		int len = uart_fifo_read(dev, dst, partial_size);
-		if (len <= 0) continue;
-		dst += len;
-		partial_size -= len;
-		total_size += len;
-	}
-	for(int i=0; i<total_size; ++i) {
-		if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, rx_buf[i], &mavlink_msg, &mavlink_status)) {
-			handle_message(mavlink_msg);
+        	if (uart_irq_rx_ready(dev)) {
+                        if (uart_fifo_read(dev, &c, 1) == 0) {
+                                break;   
+                        }
+			if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, c, &mavlink_msg, &mavlink_status)) {
+				// printk("Got full message, handling it\n");
+				handle_message(mavlink_msg);
+			}
+                } else {
+			break;
+		}
+        }
+}
+
+void mavlink_receiver_thread_entry(void)
+{
+	while (1) {
+		uint8_t c; // = console_getchar();
+		if (uart_poll_in(uart_dev, &c) == 0) {
+			if (mavlink_parse_char(MAVLINK_MAIN_CHANNEL, c, &mavlink_msg, &mavlink_status)) {
+				handle_message(mavlink_msg);
+				// printk("Received message with ID %d, sequence: %d from component %d of system %d", msg.msgid, msg.seq, msg.compid, msg.sysid);
+			}
 		}
 	}
 }
-
 static void uart_init(void)
 {
 	uart_dev = device_get_binding("UART_3");
+	struct uart_config cfg;
+	uart_config_get(uart_dev, &cfg);
+	cfg.baudrate = 115200;
+	uart_configure(uart_dev, &cfg);
 
 	uart_irq_rx_disable(uart_dev);
 	//uart_irq_tx_disable(uart_dev);
@@ -224,7 +227,8 @@ void distance_calculator_thread_entry(void) {
 			k_free(new_coords);
 			new_data = true;
 		}
-		if (coords[OUR_ID].sys_id == 0) continue;
+		if (!new_data) continue;
+		// if (coords[OUR_ID].sys_id == 0) continue;
 		uint8_t send_buf[51]; // DISTANCE_SENSOR has at most 51 bytes, where as MAVLink 2.0 messages can be as large as 279 bytes
 		mavlink_message_t mav_msg;
 		mavlink_distance_sensor_t msg = {};
@@ -259,10 +263,11 @@ void main(void)
 	time_stamp = k_uptime_get();
 	// console_init();
 	uart_init();
-	/*k_thread_create(&mavlink_receiver_thread, thread_stack, STACKSIZE,
+	/*
+	k_thread_create(&mavlink_receiver_thread, thread_stack, STACKSIZE,
 			(k_thread_entry_t) mavlink_receiver_thread_entry,
 			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
-	*/
+			*/
 
 	k_thread_create(&distance_calculator_thread, thread_stack, STACKSIZE,
 			(k_thread_entry_t) distance_calculator_thread_entry,
