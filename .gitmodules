@@ -10,3 +10,6 @@
 [submodule "zephyr-app/basic_uart/src/mavlink"]
 	path = zephyr-app/basic_uart/src/mavlink
 	url = git@github.com:mavlink/mavlink
+[submodule "zephyr-app/simple_i2c/src/mavlink"]
+	path = zephyr-app/simple_i2c/src/mavlink
+	url = https://github.com/mavlink/mavlink
