@@ -1,9 +1,9 @@
-/home/david/Development/iot-project/zephyr-app/final_project/build/Kconfig/Kconfig.modules
-/home/david/Development/iot-project/zephyr-app/final_project/build/Kconfig/Kconfig.shield
-/home/david/Development/iot-project/zephyr-app/final_project/build/Kconfig/Kconfig.shield.defconfig
-/home/david/Development/iot-project/zephyr-app/final_project/build/Kconfig/Kconfig.soc
-/home/david/Development/iot-project/zephyr-app/final_project/build/Kconfig/Kconfig.soc.arch
-/home/david/Development/iot-project/zephyr-app/final_project/build/Kconfig/Kconfig.soc.defconfig
+/home/david/Development/iot-project/zephyr-app/simple_i2c/build/Kconfig/Kconfig.modules
+/home/david/Development/iot-project/zephyr-app/simple_i2c/build/Kconfig/Kconfig.shield
+/home/david/Development/iot-project/zephyr-app/simple_i2c/build/Kconfig/Kconfig.shield.defconfig
+/home/david/Development/iot-project/zephyr-app/simple_i2c/build/Kconfig/Kconfig.soc
+/home/david/Development/iot-project/zephyr-app/simple_i2c/build/Kconfig/Kconfig.soc.arch
+/home/david/Development/iot-project/zephyr-app/simple_i2c/build/Kconfig/Kconfig.soc.defconfig
 /home/david/Development/iot-project/zephyr/modules/audio/sof/Kconfig.sof
 /home/david/Development/iot-project/zephyr/modules/audio/sof/src/Kconfig
 /home/david/Development/iot-project/zephyr/modules/audio/sof/src/arch/Kconfig

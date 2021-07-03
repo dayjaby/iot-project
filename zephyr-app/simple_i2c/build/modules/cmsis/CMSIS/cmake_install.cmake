@@ -34,7 +34,7 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("/home/david/Development/iot-project/zephyr-app/final_project/build/modules/cmsis/CMSIS/Core/cmake_install.cmake")
+  include("/home/david/Development/iot-project/zephyr-app/simple_i2c/build/modules/cmsis/CMSIS/Core/cmake_install.cmake")
 
 endif()
 

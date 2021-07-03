@@ -45,7 +45,7 @@
 #include "mavlink.h"
 #include "common.h"
 
-
+#define MAVLINK_DEBUG_MODE
 const int MAVLINK_MAIN_CHANNEL = 0;
 const int UWB_COMPONENT_ID = 25;
 
@@ -250,6 +250,7 @@ void mavlink_send_uart_bytes(const uint8_t *ch, int length)
 		// another message being processed
 		// let's wait for 5 milliseconds as sending a DISTANCE_SENSOR message at 115200 baudrate
 		// should take around 4.43 milliseconds
+		// TODO: just append the new data as long as it fits into the buffer
 		k_msleep(5);
 	}
 	memcpy(uart_tx_buf, ch, length);
@@ -292,12 +293,18 @@ void send_named_value_float(const char* name, float value) {
 
 namespace PozyxConstants {
 	const uint16_t I2C_ADDRESS = 0x4B;
+
+	enum class RangeProtocol : uint8_t {
+		Precision = 0x00,
+		Fast = 0x01
+	};
 }
 
 namespace PozyxRegisters {
 	const uint8_t WHO_AM_I = 0x00;
 	const uint8_t FIRMWARE_VERSION = 0x01;
 	const uint8_t HARDWARE_VERSION = 0x02;
+	const uint8_t RANGE_PROTOCOL = 0x21;
 }
 
 class PozyxDev {
@@ -306,6 +313,7 @@ public:
 		dev(i2c_dev),
 		i2c_addr(PozyxConstants::I2C_ADDRESS)
 	{
+		set_range_protocol(PozyxConstants::RangeProtocol::Fast);
 	}
 
 	uint8_t who_am_i() {
@@ -320,9 +328,30 @@ public:
 		return read_byte(PozyxRegisters::HARDWARE_VERSION);
 	}
 
+	PozyxConstants::RangeProtocol range_protocol() {
+		return PozyxConstants::RangeProtocol(read_byte(PozyxRegisters::RANGE_PROTOCOL));
+	}
+
+	void set_range_protocol(PozyxConstants::RangeProtocol protocol) {
+		write_byte(PozyxRegisters::RANGE_PROTOCOL, static_cast<uint8_t>(protocol));
+	}
+
 protected:
 	const struct device *dev;
 	uint16_t i2c_addr;
+
+	void write_byte(uint8_t register_addr, uint8_t value) {
+		struct i2c_msg msgs[2];
+		msgs[0].buf = &register_addr;
+		msgs[0].len = 1U;
+		msgs[0].flags = I2C_MSG_WRITE;
+
+		msgs[1].buf = &value;
+		msgs[1].len = 1U;
+		msgs[1].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+  
+        	i2c_transfer(dev, msgs, 2, i2c_addr);
+	}
 
 	uint8_t read_byte(uint8_t register_addr) {
 		uint8_t data;
@@ -338,13 +367,13 @@ protected:
 
 		msgs[0].buf = addr;
 		msgs[0].len = 1U;
-		msgs[0].flags = I2C_MSG_WRITE;
+		msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
 
 		msgs[1].buf = data;
 		msgs[1].len = num_bytes;
 		msgs[1].flags = I2C_MSG_READ | I2C_MSG_STOP;
 
-		return i2c_transfer(dev, &msgs[0], 2, i2c_addr);
+		return i2c_transfer(dev, msgs, 1, i2c_addr);
 	}
 };
 
@@ -364,12 +393,19 @@ void read_range_thread_entry(void) {
 	queue_named_value("test", 1);
 	PozyxDev pozyx(i2c_dev);
 
+#ifdef MAVLINK_DEBUG_MODE
+	queue_named_value("whoami", pozyx.who_am_i());
+	queue_named_value("firmware", pozyx.firmware_version());
+	queue_named_value("hardware", pozyx.hardware_version());
+#endif
 	k_timer_init(&timer, NULL, NULL);
 	while (1) {
 		k_timer_start(&timer, K_MSEC(500), K_NO_WAIT);
-		queue_named_value("whoami", pozyx.who_am_i());
-		queue_named_value("firmware", pozyx.firmware_version());
-		queue_named_value("hardware", pozyx.hardware_version());
+		pozyx.set_range_protocol(PozyxConstants::RangeProtocol::Fast);
+		//pozyx.set_range_protocol(PozyxConstants::RangeProtocol::Precision);
+#ifdef MAVLINK_DEBUG_MODE
+		queue_named_value("rngproto", static_cast<uint8_t>(pozyx.range_protocol()));
+#endif
 		/*
 		if (OUR_ID != 0) {
 			queue_coords(sys_id,
@@ -498,13 +534,14 @@ void main(void)
 	k_thread_create(&read_range_thread, thread_stack, STACKSIZE,
 			(k_thread_entry_t) read_range_thread_entry,
 			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
-
 	*/
+
 	k_thread_create(&distance_calculator_thread, thread_stack, STACKSIZE,
 			(k_thread_entry_t) distance_calculator_thread_entry,
 			NULL, NULL, NULL, K_PRIO_COOP(8), 0, K_NO_WAIT);
 
 	read_range_thread_entry();
+
 	/*
 	struct k_timer timer;
 

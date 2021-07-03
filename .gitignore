@@ -1,3 +1,5 @@
 /build
 generated/include/mavlink
 /zephyr-app/basic_uart/build
+/zephyr-app/basic_i2c/build
+/zephyr-app/final_project/build

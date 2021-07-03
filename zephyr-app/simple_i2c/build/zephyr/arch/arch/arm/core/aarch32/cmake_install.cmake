@@ -34,8 +34,8 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("/home/david/Development/iot-project/zephyr-app/final_project/build/zephyr/arch/arch/arm/core/aarch32/cortex_m/cmake_install.cmake")
-  include("/home/david/Development/iot-project/zephyr-app/final_project/build/zephyr/arch/arch/arm/core/aarch32/mpu/cmake_install.cmake")
+  include("/home/david/Development/iot-project/zephyr-app/simple_i2c/build/zephyr/arch/arch/arm/core/aarch32/cortex_m/cmake_install.cmake")
+  include("/home/david/Development/iot-project/zephyr-app/simple_i2c/build/zephyr/arch/arch/arm/core/aarch32/mpu/cmake_install.cmake")
 
 endif()
 
