@@ -1,1 +1,0 @@
-osource "/home/david/Development/iot-project/zephyr/zephyr/soc/$(ARCH)/*/Kconfig.soc"
