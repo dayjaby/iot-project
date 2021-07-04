@@ -75,11 +75,12 @@ struct coordinates {
 	float latitude;
 	float longitude;
 	float altitude;
+	float uwb_distance;
 };
 
 K_FIFO_DEFINE(coords_fifo);
 
-void queue_coords(uint8_t sys_id, float latitude, float longitude, float altitude) {
+void queue_coords(uint8_t sys_id, float latitude, float longitude, float altitude, float uwb_distance=0.0f) {
 	size_t size = sizeof(struct coordinates);
         void* mem_ptr = k_malloc(size);
 	struct coordinates* coords = reinterpret_cast<struct coordinates*>(mem_ptr);
@@ -87,6 +88,7 @@ void queue_coords(uint8_t sys_id, float latitude, float longitude, float altitud
 	coords->latitude = latitude;
 	coords->longitude = longitude;
 	coords->altitude = altitude;
+	coords->uwb_distance = uwb_distance;
 	k_fifo_put(&coords_fifo, mem_ptr);
 }
 
@@ -320,6 +322,8 @@ namespace PozyxRegisters {
 	const uint8_t TX_SEND = 0xB3;
 	const uint8_t RX_DATA = 0xB4;
 	const uint8_t DO_RANGING = 0xB5;
+
+	const uint8_t DEVICE_GETRANGEINFO = 0xC7;
 }
 
 namespace PozyxParams {
@@ -390,6 +394,19 @@ public:
 			result_bytes);
 	}
 
+	PozyxConstants::Status range(uint16_t net_id, uint32_t& timestamp, uint32_t& range, int16_t& signal_strength) {
+		uint8_t buf[10];
+		PozyxConstants::Status status = register_function(PozyxRegisters::DEVICE_GETRANGEINFO,
+			reinterpret_cast<uint8_t*>(&net_id),
+			2,
+			buf,
+			10);
+		timestamp = *reinterpret_cast<uint32_t*>(&buf[0]);
+		range = *reinterpret_cast<uint32_t*>(&buf[4]);
+		signal_strength = buf[8] << 8 + buf[9];
+		return status;
+	}
+
 protected:
 	const struct device *dev;
 	uint16_t i2c_addr;
@@ -444,10 +461,6 @@ protected:
 		msgs[1].buf = params;
 		msgs[1].len = param_bytes;
 		msgs[1].flags = I2C_MSG_WRITE;
-
-		for (int i=0; i<param_bytes; ++i) {
-			printk("Param %i: %x\n", i, params[i]);
-		}
 		//msgs[2].buf = &status;
 		//msgs[2].len = 1U;
 		//msgs[2].flags = I2C_MSG_READ;
@@ -458,7 +471,6 @@ protected:
 
 		i2c_transfer(dev, msgs, 3, i2c_addr);
 		memcpy(result, buf+1, result_bytes);
-		printk("Status: %x %x\n", register_addr, buf[0]);
 		return PozyxConstants::Status(buf[0]);
 	}
 };
@@ -486,31 +498,37 @@ void read_range_thread_entry(void) {
 	} remote_position;
 	while (1) {
 		k_timer_start(&timer, K_MSEC(500), K_NO_WAIT);
-		//pozyx.set_range_protocol(PozyxConstants::RangeProtocol::Precision);
-		//pozyx.set_network_id(0x672d);
-		if (pozyx.rx_data(reinterpret_cast<uint8_t*>(&remote_position), sizeof(remote_position)) == PozyxConstants::Status::Success) {
-			queue_named_value("pos1", remote_position.latitude);
-			queue_named_value("pos2", remote_position.longitude);
-			queue_named_value("pos3", remote_position.altitude);
-		}
-		//if (remote_position.status == PozyxConstants::Status::Success) {
-		//}
-		queue_named_value("netid", pozyx.network_id());
+
+		uint32_t timestamp;
+		uint32_t range;
+		int16_t signal_strength;
+		if (pozyx.range(0x6778, timestamp, range, signal_strength) == PozyxConstants::Status::Success) {
+			float scaled_range = range;
+			if (pozyx.rx_data(reinterpret_cast<uint8_t*>(&remote_position), sizeof(remote_position)) == PozyxConstants::Status::Success) {
 #ifdef MAVLINK_DEBUG_MODE
+				queue_named_value("range", range);
+				queue_named_value("pos1", remote_position.latitude);
+				queue_named_value("pos2", remote_position.longitude);
+				queue_named_value("pos3", remote_position.altitude);
+#endif
+				if (OUR_ID != 0) {
+					uint8_t sys_id = SYS_IDS+1 - OUR_ID;
+					queue_coords(sys_id,
+						remote_position.latitude / 1e7,
+						remote_position.longitude / 1e7,
+						remote_position.altitude / 1e3,
+						range / 1e3
+					);
+				}
+			}
+		}
+#ifdef MAVLINK_DEBUG_MODE
+		queue_named_value("netid", pozyx.network_id());
 		queue_named_value("rngproto", static_cast<uint8_t>(pozyx.range_protocol()));
 		queue_named_value("whoami", pozyx.who_am_i());
 		queue_named_value("firmware", pozyx.firmware_version());
 		queue_named_value("hardware", pozyx.hardware_version());
 #endif
-		//pozyx.set_range_protocol(PozyxConstants::RangeProtocol::Precision);
-		/*
-		if (OUR_ID != 0) {
-			queue_coords(sys_id,
-				gps_raw_int.lat / 1e7,
-				gps_raw_int.lon / 1e7,
-				gps_raw_int.alt / 1e3
-			);
-		} */
 		k_timer_status_sync(&timer);
 	}
 }
@@ -538,7 +556,6 @@ void distance_calculator_thread_entry(void) {
 			k_free(new_named_value);
 		}
 
-		/*
 		while((new_coords = reinterpret_cast<struct coordinates*>(k_fifo_get(&coords_fifo, K_NO_WAIT)))) {
 			if(new_coords->sys_id <= SYS_IDS) {
 				memcpy(&coords[new_coords->sys_id], new_coords, sizeof(struct coordinates));
@@ -567,8 +584,8 @@ void distance_calculator_thread_entry(void) {
 			msg.type = MAV_DISTANCE_SENSOR_ULTRASOUND; // TODO: suggest additional types in github.com/mavlink/mavlink
 			msg.orientation = MAV_SENSOR_ROTATION_CUSTOM;
 			msg.min_distance = 1; // in cm; to be determined
-			msg.max_distance = 10000; // in cm; to be determined
-			msg.current_distance = calculate_distance(coords[OUR_ID], coords[i]); // send for now in m TODO: * 100; // in cm
+			msg.max_distance = calculate_distance(coords[OUR_ID], coords[i]) * 100; // in cm; using gps distance here
+			msg.current_distance = coords[i].uwb_distance * 100;
 			float roll = 0.0f; // TODO: get roll angle from ATTITUDE from flight controller
 			float pitch = 0.0f; // TODO: get pitch angle from ATTITUDE from flight controller
 			float yaw = calculate_heading(coords[OUR_ID], coords[i]); // TODO: compensate yaw angle from ATTITUDE from flight controller
@@ -583,7 +600,6 @@ void distance_calculator_thread_entry(void) {
 			int n = mavlink_msg_to_send_buffer(send_buf, &mav_msg);
 			mavlink_send_uart_bytes(send_buf, n);
 		}
-		*/
 		k_timer_status_sync(&timer);
 	}
 }
