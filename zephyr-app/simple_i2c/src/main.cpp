@@ -36,6 +36,9 @@
 #include <drivers/uart.h>
 #include <drivers/i2c.h>
 
+// Storage
+#include <storage/flash_map.h>
+
 // Network
 #include <net/ieee802154_radio.h>
 #include <net/net_config.h>
@@ -45,7 +48,7 @@
 #include "mavlink.h"
 #include "common.h"
 
-#define MAVLINK_DEBUG_MODE
+// #define MAVLINK_DEBUG_MODE
 const int MAVLINK_MAIN_CHANNEL = 0;
 const int UWB_COMPONENT_ID = 25;
 
@@ -292,6 +295,11 @@ void send_named_value_float(const char* name, float value) {
  */
 
 namespace PozyxConstants {
+	enum class Status : uint8_t {
+		Failure = 0x00,
+		Success = 0x01,
+	};
+
 	const uint16_t I2C_ADDRESS = 0x4B;
 
 	enum class RangeProtocol : uint8_t {
@@ -304,7 +312,21 @@ namespace PozyxRegisters {
 	const uint8_t WHO_AM_I = 0x00;
 	const uint8_t FIRMWARE_VERSION = 0x01;
 	const uint8_t HARDWARE_VERSION = 0x02;
+	const uint8_t NETWORK_ID = 0x1A;
 	const uint8_t RANGE_PROTOCOL = 0x21;
+
+	const uint8_t LED_CONTROL = 0xB1;
+	const uint8_t TX_DATA = 0xB2;
+	const uint8_t TX_SEND = 0xB3;
+	const uint8_t RX_DATA = 0xB4;
+	const uint8_t DO_RANGING = 0xB5;
+}
+
+namespace PozyxParams {
+	struct RxData {
+		uint8_t offset;
+		uint8_t length;
+	};
 }
 
 class PozyxDev {
@@ -328,6 +350,17 @@ public:
 		return read_byte(PozyxRegisters::HARDWARE_VERSION);
 	}
 
+	uint16_t network_id() {
+		uint16_t net_id;
+		read_bytes(PozyxRegisters::NETWORK_ID, reinterpret_cast<uint8_t*>(&net_id), 2);
+		return net_id;
+	}
+
+	void set_network_id(uint16_t net_id) {
+		write_bytes(PozyxRegisters::NETWORK_ID, reinterpret_cast<uint8_t*>(&net_id), 2);
+	}
+
+
 	PozyxConstants::RangeProtocol range_protocol() {
 		return PozyxConstants::RangeProtocol(read_byte(PozyxRegisters::RANGE_PROTOCOL));
 	}
@@ -336,22 +369,48 @@ public:
 		write_byte(PozyxRegisters::RANGE_PROTOCOL, static_cast<uint8_t>(protocol));
 	}
 
+
+	PozyxConstants::Status led_control() {
+		uint8_t bitflag = 0xAF;
+		uint8_t led_status;
+		PozyxConstants::Status status = register_function(PozyxRegisters::LED_CONTROL,
+			&bitflag,
+			1,
+			&led_status,
+			1);
+		return status;
+	}
+
+	PozyxConstants::Status rx_data(uint8_t* result, uint32_t result_bytes) {
+		PozyxParams::RxData params = {0x00, static_cast<uint8_t>(result_bytes)};
+		return register_function(PozyxRegisters::RX_DATA,
+			reinterpret_cast<uint8_t*>(&params),
+			sizeof(params),
+			result,
+			result_bytes);
+	}
+
 protected:
 	const struct device *dev;
 	uint16_t i2c_addr;
 
-	void write_byte(uint8_t register_addr, uint8_t value) {
+	int write_byte(uint8_t register_addr, uint8_t value) {
+		return write_bytes(register_addr, &value, 1U);
+	}
+
+	int write_bytes(uint8_t register_addr, uint8_t *data, uint32_t num_bytes) {
 		struct i2c_msg msgs[2];
 		msgs[0].buf = &register_addr;
 		msgs[0].len = 1U;
 		msgs[0].flags = I2C_MSG_WRITE;
 
-		msgs[1].buf = &value;
-		msgs[1].len = 1U;
+		msgs[1].buf = data;
+		msgs[1].len = num_bytes;
 		msgs[1].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
   
-        	i2c_transfer(dev, msgs, 2, i2c_addr);
+        	return i2c_transfer(dev, msgs, 2, i2c_addr);
 	}
+
 
 	uint8_t read_byte(uint8_t register_addr) {
 		uint8_t data;
@@ -360,20 +419,47 @@ protected:
 	}
 
 	int read_bytes(uint8_t register_addr, uint8_t *data, uint32_t num_bytes) {
-		uint8_t addr[1];
 		struct i2c_msg msgs[2];
 
-		addr[0] = register_addr;
-
-		msgs[0].buf = addr;
+		msgs[0].buf = &register_addr;
 		msgs[0].len = 1U;
-		msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+		msgs[0].flags = I2C_MSG_WRITE;
 
 		msgs[1].buf = data;
 		msgs[1].len = num_bytes;
-		msgs[1].flags = I2C_MSG_READ | I2C_MSG_STOP;
+		msgs[1].flags = I2C_MSG_READ | I2C_MSG_RESTART | I2C_MSG_STOP;
 
-		return i2c_transfer(dev, msgs, 1, i2c_addr);
+		return i2c_transfer(dev, msgs, 2, i2c_addr);
+	}
+	
+	PozyxConstants::Status register_function(uint8_t register_addr, uint8_t *params, uint32_t param_bytes, uint8_t *result, uint32_t result_bytes) {
+		uint8_t buf[100];
+		uint8_t status = static_cast<uint8_t>(PozyxConstants::Status::Failure);
+		struct i2c_msg msgs[3];
+
+		msgs[0].buf = &register_addr;
+		msgs[0].len = 1U;
+		msgs[0].flags = I2C_MSG_WRITE;
+
+		msgs[1].buf = params;
+		msgs[1].len = param_bytes;
+		msgs[1].flags = I2C_MSG_WRITE;
+
+		for (int i=0; i<param_bytes; ++i) {
+			printk("Param %i: %x\n", i, params[i]);
+		}
+		//msgs[2].buf = &status;
+		//msgs[2].len = 1U;
+		//msgs[2].flags = I2C_MSG_READ;
+
+		msgs[2].buf = buf;
+		msgs[2].len = result_bytes + 1;
+		msgs[2].flags = I2C_MSG_READ | I2C_MSG_RESTART | I2C_MSG_STOP;
+
+		i2c_transfer(dev, msgs, 3, i2c_addr);
+		memcpy(result, buf+1, result_bytes);
+		printk("Status: %x %x\n", register_addr, buf[0]);
+		return PozyxConstants::Status(buf[0]);
 	}
 };
 
@@ -390,22 +476,33 @@ void read_range_thread_entry(void) {
 		printk("I2C device driver found\n");
 	}
 
-	queue_named_value("test", 1);
 	PozyxDev pozyx(i2c_dev);
 
-#ifdef MAVLINK_DEBUG_MODE
-	queue_named_value("whoami", pozyx.who_am_i());
-	queue_named_value("firmware", pozyx.firmware_version());
-	queue_named_value("hardware", pozyx.hardware_version());
-#endif
 	k_timer_init(&timer, NULL, NULL);
+	struct {
+		uint32_t latitude;
+		uint32_t longitude;
+		uint32_t altitude;
+	} remote_position;
 	while (1) {
 		k_timer_start(&timer, K_MSEC(500), K_NO_WAIT);
-		pozyx.set_range_protocol(PozyxConstants::RangeProtocol::Fast);
 		//pozyx.set_range_protocol(PozyxConstants::RangeProtocol::Precision);
+		//pozyx.set_network_id(0x672d);
+		if (pozyx.rx_data(reinterpret_cast<uint8_t*>(&remote_position), sizeof(remote_position)) == PozyxConstants::Status::Success) {
+			queue_named_value("pos1", remote_position.latitude);
+			queue_named_value("pos2", remote_position.longitude);
+			queue_named_value("pos3", remote_position.altitude);
+		}
+		//if (remote_position.status == PozyxConstants::Status::Success) {
+		//}
+		queue_named_value("netid", pozyx.network_id());
 #ifdef MAVLINK_DEBUG_MODE
 		queue_named_value("rngproto", static_cast<uint8_t>(pozyx.range_protocol()));
+		queue_named_value("whoami", pozyx.who_am_i());
+		queue_named_value("firmware", pozyx.firmware_version());
+		queue_named_value("hardware", pozyx.hardware_version());
 #endif
+		//pozyx.set_range_protocol(PozyxConstants::RangeProtocol::Precision);
 		/*
 		if (OUR_ID != 0) {
 			queue_coords(sys_id,
